@@ -40,7 +40,7 @@ Each reference file serves a specific purpose — only read what you need:
 | `references/maestro-patterns.md` | Generating YAML files (Workflow 2). Contains all templates: config, utilities, flows, master flow, common patterns |
 | `references/testid-conventions.md` | Analyzing testIDs or recommending new ones (Workflow 1). Contains naming rules and examples |
 | `references/flow-doc-template.md` | Writing markdown test plan docs (Workflow 1). Contains the output template |
-| `references/troubleshooting.md` | Debugging test failures (Workflow 3), or when generating YAML and you need to handle a known edge case. Contains 18 solved problems |
+| `references/troubleshooting.md` | Debugging test failures (Workflow 3), or when generating YAML and you need to handle a known edge case. Contains 25 solved problems |
 
 ---
 
@@ -139,7 +139,14 @@ Read `references/maestro-patterns.md` before generating any YAML — it contains
 - Production flows are READ-ONLY (no sends, no edits, no deletes)
 - Flows run sequentially sharing one session. `run-all.yaml` ensures this
 - Handle multi-language alerts with `optional: true` for each language variant
-- Handle BottomSheet/Portal elements with `text` selectors (testIDs don't work in portals)
+- **BottomSheet/Portal elements are INVISIBLE to Maestro** — neither testID nor text selectors work. Use the native Modal dual-render approach (see maestro-patterns.md) with `EXPO_PUBLIC_E2E_TEST` env var
+- Maestro's `scroll` command accepts NO properties — use plain `- scroll` only
+- `scrollUntilVisible` is unreliable — prefer plain `- scroll` followed by `assertVisible`
+- `pressKey: Escape` does NOT work on iOS — use close buttons or coordinate taps
+- `clearInput` is NOT a valid command — use `tapOn` + `eraseText` instead
+- `assertNotVisible` only works for elements that exist but are hidden — not for absent elements
+- Tap individual SegmentedControl segments (`${id}-${key}`), never the container
+- Tap StepHeader back buttons (`${id}-back`), never the header container
 
 ---
 
@@ -147,7 +154,7 @@ Read `references/maestro-patterns.md` before generating any YAML — it contains
 
 **Goal:** Run Maestro tests and produce a diagnostic report.
 
-Read `references/troubleshooting.md` when analyzing failures — it contains 18 solved problems from real projects.
+Read `references/troubleshooting.md` when analyzing failures — it contains 25 solved problems from real projects.
 
 ### Steps
 
@@ -217,7 +224,7 @@ Read `references/troubleshooting.md` when analyzing failures — it contains 18 
 | **Timeout** | Element loads too slowly | App Developer / Infra |
 | **Navigation** | Wrong screen displayed | App Developer |
 | **Auth** | Session expired or login failed | Backend / Config |
-| **Portal/Modal** | Element in Portal not accessible by ID | Test Author (use text selector) |
+| **Portal/BottomSheet** | gorhom BottomSheet content invisible to Maestro (neither testID nor text work) | App Developer (implement native Modal dual-render with `useNativeModal` prop) |
 | **Animation** | Element hidden during animation | Test Author (add wait) |
 | **Permission** | Feature gated by user role | Config (test account perms) |
 | **Flaky** | Intermittent failures | Test Author (add waits/retries) |

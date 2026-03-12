@@ -93,6 +93,79 @@ These patterns apply regardless of the specific app. Adapt the prefix to match t
 | Menu container | `<context>-options-menu` | `conversation-options-menu` |
 | Menu items | `<context>-option-<action>` | `conversation-option-archive` |
 
+## Compound Component Patterns
+
+Some components generate child testIDs from a parent testID. Know these patterns to avoid tapping container elements that don't trigger actions.
+
+### SegmentedControl / Toggle
+
+Container testID generates per-segment IDs: `${containerTestID}-${option.key}`
+
+| Element | testID | Example |
+|---|---|---|
+| Container (DON'T tap) | `view-toggle` | Tapping hits the divider |
+| Segment option | `view-toggle-${key}` | `view-toggle-calendar`, `view-toggle-list` |
+
+### StepHeader (Multi-Step Forms)
+
+Header testID generates a back button: `${testID}-back`
+
+| Element | testID | Example |
+|---|---|---|
+| Header container (DON'T tap) | `results-step-header` | No action on tap |
+| Back button | `results-step-header-back` | Navigates to previous step |
+
+### Property Selector
+
+| Element | testID | Example |
+|---|---|---|
+| Scroll container | `property-selector-scroll` | |
+| Individual pill | `property-pill-{propertyId}` | `property-pill-abc123` |
+
+## Role-Specific Prefixes
+
+Different roles use distinct prefixes to avoid testID collisions across screens.
+
+### Owner Screens
+
+| Element | testID Pattern | Example |
+|---|---|---|
+| Home scroll | `owner-home-scroll` | |
+| Header avatar | `owner-header-avatar` | Opens account drawer |
+| Performance card | `performance-card-revenue` | |
+
+### Account Drawer
+
+| Element | testID Pattern | Example |
+|---|---|---|
+| Drawer container | `account-drawer` | |
+| User name | `account-drawer-user-name` | |
+| Language selector | `account-drawer-language-selector` | |
+| Sign out button | `account-drawer-sign-out` | |
+| Close button | `account-drawer-close` | |
+
+### Calendar (Shared Across Roles)
+
+| Element | testID Pattern | Example |
+|---|---|---|
+| Month/year label | `calendar-month-year` | |
+| Next month arrow | `calendar-next-month` | |
+| Previous month arrow | `calendar-prev-month` | |
+| Block dates button | `calendar-block-dates-button` | |
+
+### Check Availability Modal (Admin)
+
+| Element | testID Pattern | Example |
+|---|---|---|
+| Close button | `check-availability-close` | |
+| Property selector | `check-availability-property` | |
+| Check-in date | `check-availability-checkin` | |
+| Check-out date | `check-availability-checkout` | |
+| Guest count | `check-availability-guests` | |
+| Search button | `check-availability-search` | |
+| Create reservation | `check-availability-create-reservation` | |
+| Send quote | `check-availability-send-quote` | |
+
 ## Adding testIDs to Components
 
 When analysis reveals missing testIDs, recommend adding them:

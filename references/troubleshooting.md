@@ -55,17 +55,31 @@ maestro test .maestro/release-checks/staging/run-all.yaml
 maestro test .maestro/release-checks/staging/
 ```
 
-### 4. BottomSheet / Portal Elements Not Found
+### 4. BottomSheet / Portal Elements Completely Invisible to Maestro
 
-**Problem:** `@gorhom/bottom-sheet` renders in a React Native Portal. Maestro can't find elements by testID inside portals.
+**Problem:** `@gorhom/bottom-sheet` renders content in an internal Portal layer. Maestro can't find ANY elements inside it — **neither `testID` nor `text` selectors work**. This is NOT a simple accessibility issue — gorhom's Portal renders outside the native accessibility tree entirely.
 
-**Solution:** Use `text` selectors instead of `id`:
-```yaml
-- tapOn:
-    text: "Button Label"
-```
+**What doesn't work:**
+- `tapOn: id: "my-button"` → element not found
+- `tapOn: text: "Submit"` → element not found
+- `assertVisible: id: "my-element"` → element not found
+- `accessible={false}` on BottomSheet → no effect
+- `accessibilityLabel` / `importantForAccessibility` → no effect
+- Conditional mounting (useState + index={0}) → renders visually but still invisible to Maestro
 
-If text matching doesn't work, use coordinate taps as a last resort (see #16).
+**Solution:** Use a **dual-render approach** with native React Native `<Modal>` for E2E tests:
+
+1. Set `EXPO_PUBLIC_E2E_TEST=true` env var before starting Metro
+2. Add `useNativeModal` prop to BottomSheet components
+3. When `useNativeModal` is true, render content in `<Modal presentationStyle="pageSheet">` instead of `<BottomSheet>`
+4. Replace `BottomSheetScrollView` with regular `ScrollView` (see #19)
+5. Use conditional mounting (`useState`) instead of `index={-1}`
+
+Native `<Modal>` creates a separate native `UIViewController` (iOS) that Maestro reads perfectly — all testIDs and text selectors work normally inside it.
+
+See `maestro-patterns.md` → "BottomSheet / Portal — Native Modal Dual-Render Strategy" for full implementation details.
+
+**Coordinate taps** remain the only option for BottomSheets not yet migrated to the dual-render approach (see #16).
 
 ### 5. OTP Input Hidden Behind Visual Boxes
 
@@ -229,20 +243,46 @@ For precise targeting, use `scrollUntilVisible`:
 
 **Important:** Always document the calibration device. Coordinates change across device sizes.
 
-### 17. Keyboard Covering Inputs
+### 17. Keyboard Covering Inputs / hideKeyboard Causes Spurious Taps
 
-**Problem:** iOS keyboard covers input fields in forms, especially in modals.
+**Problem:** iOS keyboard covers input fields in forms, especially in modals. Additionally, Maestro's `hideKeyboard` command on iOS often causes a spurious tap on the keyboard itself, inserting an unwanted character (commonly `t` or `y`) into the focused field. This corrupts the input and causes login/form failures.
 
-**Solution:** Use `hideKeyboard` between fields:
+**Solution:** NEVER use `hideKeyboard` when a text field has focus. Instead, tap directly on the next interactive element by testID — tapping a button or another field automatically dismisses the keyboard without side effects:
 ```yaml
+# WRONG — hideKeyboard may type a stray character
+- tapOn:
+    id: "password-input"
+- inputText: "MyPassword123"
+- hideKeyboard          # ❌ Can insert 't' into the password field!
+- tapOn:
+    id: "submit-button"
+
+# CORRECT — tap the next element directly
+- tapOn:
+    id: "password-input"
+- inputText: "MyPassword123"
+- tapOn:
+    id: "submit-button"  # ✅ Keyboard dismisses automatically
+
+# For multi-field forms, just tap the next field
 - tapOn:
     id: "field-1"
-- inputText: "value"
-- hideKeyboard
-- tapOn:
+- inputText: "value1"
+- tapOn:                  # ✅ Tapping next field dismisses keyboard
     id: "field-2"
-- inputText: "value"
+- inputText: "value2"
 ```
+
+**Preferred keyboard dismissal method:** Use `pressKey: enter` — it simulates the Return/Done key on the iOS keyboard and cleanly dismisses it without inserting characters. Use this when the next interactive element (like a submit button) is hidden behind the keyboard.
+
+```yaml
+- inputText: "password123"
+- pressKey: enter              # ✅ Dismisses keyboard cleanly
+- tapOn:
+    id: "submit-button"       # Now visible and tappable
+```
+
+**Rule:** Never use `hideKeyboard`. For multi-field forms, tap the next field by testID (auto-dismisses keyboard). When the submit button is behind the keyboard, use `pressKey: enter` first.
 
 ### 18. Clearing Pre-filled Text
 
@@ -282,6 +322,113 @@ cat .env | grep MAESTRO_
 ls -la scripts/e2e-run.sh
 ```
 
+### 19. BottomSheetScrollView Crash Outside BottomSheet Context
+
+**Problem:** Components using `BottomSheetScrollView` from `@gorhom/bottom-sheet` crash with `"useBottomSheetInternal cannot be used out of the BottomSheet!"` when rendered inside a native `<Modal>` (dual-render E2E approach).
+
+**Solution:** Replace `BottomSheetScrollView` with regular `ScrollView` from `react-native` in any content component that needs to work in both BottomSheet and native Modal modes:
+```tsx
+// Before:
+import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
+// After:
+import { ScrollView } from "react-native";
+```
+
+### 20. `scroll` Command with Properties → "Unknown Property"
+
+**Problem:** Maestro's `scroll` command does NOT accept `id:`, `direction:`, or other properties. Using them causes `"Unknown Property: id"` error.
+
+**Solution:** Use plain `- scroll` (scrolls the main screen down):
+```yaml
+# ❌ WRONG
+- scroll:
+    id: "my-scroll-view"
+    direction: DOWN
+
+# ✅ CORRECT
+- scroll
+```
+
+### 21. SegmentedControl Container Tap Hits Divider
+
+**Problem:** Tapping a SegmentedControl by its container testID taps the divider between segments instead of a segment option. No segment gets selected.
+
+**Solution:** Tap the individual segment testID. Components typically generate `${containerTestID}-${option.key}`:
+```yaml
+# ❌ WRONG — hits divider
+- tapOn:
+    id: "view-toggle"
+
+# ✅ CORRECT — hits specific segment
+- tapOn:
+    id: "view-toggle-calendar"
+```
+
+### 22. `pressKey: Escape` Has No Effect on iOS
+
+**Problem:** `pressKey: Escape` does nothing on iOS simulators — it doesn't dismiss modals, bottom sheets, or keyboards.
+
+**Solution:** Use close buttons (preferred) or coordinate taps:
+```yaml
+# ✅ Close button
+- tapOn:
+    id: "modal-close-button"
+
+# ✅ Coordinate tap outside modal
+- tapOn:
+    point: "50%,10%"
+    optional: true
+```
+
+### 23. `clearInput` Is Not a Valid Maestro Command
+
+**Problem:** `clearInput` doesn't exist in Maestro. Using it causes a parse error.
+
+**Solution:** Tap the field first, then use `eraseText`:
+```yaml
+- tapOn:
+    id: "email-input"
+- eraseText: 50
+- inputText: "new-value@example.com"
+```
+
+### 24. `assertNotVisible` Fails for Non-Existent Elements
+
+**Problem:** `assertNotVisible` errors out when the testID doesn't exist in the view tree at all. It only works for elements that exist but are hidden/off-screen.
+
+**Solution:** Don't use `assertNotVisible` to check that an element doesn't exist. For checking absence, use `assertVisible` with `optional: true` and check the WARNED status in results:
+```yaml
+# ✅ For elements that exist but should be hidden
+- assertNotVisible:
+    id: "loading-spinner"
+
+# ✅ For elements that may not exist at all
+- assertVisible:
+    id: "maybe-present-element"
+    optional: true
+```
+
+### 25. Empty State — Data-Dependent Elements
+
+**Problem:** Tests fail when expecting elements that only appear when data exists (e.g., "Unblock" button only exists if there are blocked dates).
+
+**Solution:** Use `optional: true` for all data-dependent interactions:
+```yaml
+# May or may not have blocked dates
+- assertVisible:
+    text: "Blocked Dates"
+    optional: true
+
+- tapOn:
+    text: "Unblock"
+    optional: true
+
+# Dismiss confirmation if it appeared
+- tapOn:
+    text: "Cancel"
+    optional: true
+```
+
 ---
 
 ## Error → Cause → Fix
@@ -294,5 +441,8 @@ ls -la scripts/e2e-run.sh
 | `Unable to connect to device` | Simulator not booted | Boot simulator/emulator |
 | `Could not launch app` | App not installed | Rebuild and install app |
 | `Multiple elements found` | testID not unique | Make testIDs unique or use `index` |
-| `Element is not visible` | Element off-screen | Use `scrollUntilVisible` first |
+| `Element is not visible` | Element off-screen | Use plain `scroll` then `assertVisible` |
 | `Cannot tap element` | Element behind overlay | Dismiss overlay/modal first |
+| `Unknown Property: id` on `scroll` | `scroll` doesn't accept properties | Use plain `- scroll` with no args |
+| `useBottomSheetInternal` crash | gorhom component outside BottomSheet | Replace `BottomSheetScrollView` with `ScrollView` |
+| Element not found inside BottomSheet | gorhom Portal invisible to Maestro | Use native Modal dual-render (see #4) |

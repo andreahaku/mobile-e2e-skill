@@ -26,8 +26,46 @@ tags:
   - auth
   - navigation
   # Add feature-specific tags
+# Environment variables (loaded from .env via scripts/e2e-run.sh)
+# No credentials stored here — see .env.example for required variables
+```
+
+### Environment Variables — MAESTRO_ Prefix Rule
+
+**CRITICAL:** Maestro only auto-imports shell environment variables that start with `MAESTRO_`. Variables without this prefix are invisible to Maestro flows.
+
+**`.env` file** (gitignored):
+```bash
+MAESTRO_ADMIN_EMAIL=admin@example.com
+MAESTRO_ADMIN_PASSWORD=changeme
+MAESTRO_STAGING_EMAIL=staging@example.com
+MAESTRO_STAGING_PASSWORD=changeme
+```
+
+**Runner script** (`scripts/e2e-run.sh`):
+```bash
+# Source .env to export all MAESTRO_ vars into the shell environment
+set -a
+source "$PROJECT_ROOT/.maestro/.env"   # or "$PROJECT_ROOT/.env"
+set +a
+maestro test "$TARGET"  # Maestro auto-imports MAESTRO_* vars
+```
+
+**YAML flow header** — map MAESTRO_ vars to shorter local names:
+```yaml
+appId: com.example.app
 env:
-  # No credentials here — loaded from .env via scripts/e2e-run.sh
+  EMAIL: ${MAESTRO_ADMIN_EMAIL}
+  PASSWORD: ${MAESTRO_ADMIN_PASSWORD}
+---
+- tapOn:
+    id: "email-input"
+- inputText: ${EMAIL}           # Resolves to the MAESTRO_ADMIN_EMAIL value
+```
+
+**Without the runner script** — pass vars explicitly via CLI:
+```bash
+maestro test -e MAESTRO_ADMIN_EMAIL=admin@example.com flow.yaml
 ```
 
 ## Utility Flow Templates
@@ -327,6 +365,8 @@ env:
 
 ### Scroll Until Visible
 
+**Note:** `scrollUntilVisible` can be unreliable. Prefer plain `- scroll` when possible (see "Scroll Command Limitations" below).
+
 ```yaml
 - scrollUntilVisible:
     element:
@@ -355,13 +395,19 @@ env:
 ### Modal Dismissal
 
 ```yaml
-# Via close button
+# Via close button (preferred)
 - tapOn:
     id: "modal-close-button"
 
 # Via overlay tap
 - tapOn:
     id: "modal-overlay"
+
+# Via coordinate tap (for BottomSheets without close button)
+# Note: pressKey: Escape does NOT work on iOS
+- tapOn:
+    point: "50%,10%"
+    optional: true
 ```
 
 ### Logout (Multi-language)
@@ -390,42 +436,259 @@ Handle multiple languages by trying each with `optional: true`. Use `index: 1` b
     timeout: 30000
 ```
 
-### BottomSheet / Portal Workaround
+### BottomSheet / Portal — Native Modal Dual-Render Strategy
 
-React Native BottomSheet (`@gorhom/bottom-sheet`) renders in a Portal — testIDs are invisible to Maestro. Use text selectors or coordinate taps instead.
+**CRITICAL:** `@gorhom/bottom-sheet` renders content in an internal Portal layer that is completely invisible to Maestro's accessibility tree. **Neither `testID` nor `text` selectors work** — not `tapOn: id:`, not `tapOn: text:`, not `assertVisible`. This is a fundamental limitation of how gorhom renders content outside the normal React Native view hierarchy.
+
+**The only reliable solution** is a dual-render approach: render BottomSheet content inside a native React Native `<Modal>` during E2E tests, while keeping the smooth BottomSheet UX for regular users.
+
+#### Implementation Pattern
+
+1. **Add `EXPO_PUBLIC_E2E_TEST` env var** — Expo makes `EXPO_PUBLIC_*` vars available at runtime via `process.env`. Set it before starting Metro:
+   ```bash
+   EXPO_PUBLIC_E2E_TEST=true npx expo start --clear
+   ```
+   **IMPORTANT:** Metro must be restarted when changing env vars — hot reload doesn't pick them up.
+
+2. **Add `useNativeModal` prop** to BottomSheet components:
+   ```tsx
+   const isE2E = process.env.EXPO_PUBLIC_E2E_TEST === 'true';
+
+   // In the parent screen:
+   <CheckAvailabilityModal useNativeModal={isE2E} onClose={handleClose} />
+   ```
+
+3. **Dual render path** in the BottomSheet component:
+   ```tsx
+   interface Props {
+     useNativeModal?: boolean;
+     // ... other props
+   }
+
+   const renderNativeModal = () => (
+     <Modal visible animationType="slide" presentationStyle="pageSheet"
+       onRequestClose={handleClose}>
+       <SafeAreaView style={styles.nativeModalContainer}>
+         <View style={styles.nativeModalHandle} />
+         <ScrollView keyboardShouldPersistTaps="handled">
+           {renderStepContent()}  {/* Shared step rendering logic */}
+         </ScrollView>
+       </SafeAreaView>
+     </Modal>
+   );
+
+   const renderBottomSheet = () => (
+     <BottomSheet ref={bottomSheetRef} index={0} snapPoints={snapPoints}>
+       <BottomSheetScrollView>
+         {renderStepContent()}
+       </BottomSheetScrollView>
+     </BottomSheet>
+   );
+
+   return useNativeModal ? renderNativeModal() : renderBottomSheet();
+   ```
+
+4. **Replace `BottomSheetScrollView`** — Components using `BottomSheetScrollView` crash with `"useBottomSheetInternal cannot be used out of the BottomSheet!"` when rendered inside a native `<Modal>`. Replace with regular `ScrollView` from `react-native` in any content component that needs to work in both modes.
+
+5. **Use conditional mounting** instead of `index={-1}`:
+   ```tsx
+   // Instead of keeping BottomSheet always mounted with index={-1}:
+   const [isOpen, setIsOpen] = useState(false);
+   // ...
+   {isOpen && <MyBottomSheetModal useNativeModal={isE2E} onClose={() => setIsOpen(false)} />}
+   ```
+
+#### Why Native Modal Works
+
+React Native's `<Modal>` renders in a new native `UIViewController` (iOS) / `Dialog` (Android), creating a **separate accessibility root** that Maestro reads perfectly. All testIDs and text selectors work normally inside it.
+
+#### Maestro YAML for Native Modal Content
+
+Once content is in a native Modal, standard selectors work:
+```yaml
+# Tap button that opens the BottomSheet (visible on main screen)
+- tapOn:
+    id: "quick-action-check-availability"
+
+# Wait for content inside the native Modal — testIDs now work!
+- extendedWaitUntil:
+    visible:
+      id: "check-availability-close"
+    timeout: 10000
+
+# Interact with form elements normally
+- tapOn:
+    id: "check-availability-search"
+
+# Close via testID
+- tapOn:
+    id: "check-availability-close"
+```
+
+#### Coordinate Taps — Last Resort Only
+
+For BottomSheets that haven't been migrated to the dual-render approach, coordinate taps are the only option. Always document the calibration device:
+```yaml
+# Calibrated for: iPhone 16e (390×844), iOS 26.0
+- tapOn:
+    point: "50%,10%"   # Tap outside bottom sheet to close
+    optional: true
+```
+
+### Scroll Command Limitations
+
+**CRITICAL:** Maestro's `scroll` command does NOT accept `id:` or other properties. It only scrolls the main screen.
 
 ```yaml
-# Try text first
-- tapOn:
-    text: "Button Label"
+# ✅ CORRECT — plain scroll
+- scroll
 
-# Coordinate fallback — document calibration device!
-# Calibrated for: <device model> (<resolution>)
+# ❌ WRONG — "Unknown Property: id"
+- scroll:
+    id: "my-scroll-view"
+    direction: DOWN
+```
+
+**`scrollUntilVisible` is unreliable** — it sometimes fails to find elements even when they exist. Prefer plain `- scroll` (one or more times) followed by `assertVisible` or `extendedWaitUntil`:
+```yaml
+# ✅ Preferred — simple and reliable
+- scroll
+- scroll
+- assertVisible:
+    id: "element-at-bottom"
+
+# ⚠️ Less reliable — may timeout even when element exists
+- scrollUntilVisible:
+    element:
+      id: "element-at-bottom"
+    direction: DOWN
+    timeout: 10000
+```
+
+### SegmentedControl Interaction
+
+Tapping a SegmentedControl **container** testID hits the divider between segments, not a segment. Always tap the individual segment testID.
+
+Component pattern: `${containerTestID}-${option.key}`
+```yaml
+# ❌ WRONG — taps the divider
 - tapOn:
-    point: "50%,90%"
+    id: "view-toggle"
+
+# ✅ CORRECT — taps the specific segment
+- tapOn:
+    id: "view-toggle-calendar"   # key = "calendar"
+- tapOn:
+    id: "view-toggle-list"       # key = "list"
+```
+
+### StepHeader Back Button
+
+StepHeader components generate a back button with `${testID}-back` suffix. Tapping the header container won't trigger navigation.
+
+```yaml
+# ❌ WRONG — taps the header container (no effect)
+- tapOn:
+    id: "results-step-header"
+
+# ✅ CORRECT — taps the actual back button
+- tapOn:
+    id: "results-step-header-back"
+```
+
+### pressKey: Escape — iOS Limitation
+
+`pressKey: Escape` does NOT work on iOS simulators for dismissing modals or bottom sheets. Use coordinate taps or close buttons instead.
+
+```yaml
+# ❌ WRONG — no effect on iOS
+- pressKey: Escape
+
+# ✅ CORRECT — tap outside the modal area
+- tapOn:
+    point: "50%,10%"
+    optional: true
+
+# ✅ BEST — use a close button testID
+- tapOn:
+    id: "modal-close-button"
+```
+
+### assertNotVisible Limitation
+
+`assertNotVisible` only works for elements that **exist in the tree but are hidden**. It fails (errors) for elements whose testID doesn't exist at all.
+
+```yaml
+# ✅ Works — element exists but is hidden/off-screen
+- assertNotVisible:
+    id: "loading-spinner"
+
+# ❌ Fails — testID doesn't exist in the tree
+- assertNotVisible:
+    id: "nonexistent-element"
+```
+
+### clearInput — Invalid Command
+
+`clearInput` is NOT a valid Maestro command. Use `eraseText` instead:
+
+```yaml
+# ❌ WRONG — not a Maestro command
+- clearInput:
+    id: "email-input"
+
+# ✅ CORRECT
+- tapOn:
+    id: "email-input"
+- eraseText: 50
+- inputText: "new-value@example.com"
+```
+
+### Empty State Handling
+
+Use `optional: true` for elements that depend on data state (empty vs populated):
+```yaml
+# Data-dependent — may or may not exist
+- assertVisible:
+    text: "Blocked Dates"
+    optional: true
+
+- tapOn:
+    text: "Unblock"
     optional: true
 ```
 
 ### Keyboard & Text Management
 
+**CRITICAL: NEVER use `hideKeyboard`** — on iOS it causes Maestro to tap on the keyboard itself, inserting a stray character (typically `t` or `y`) into the focused field. This corrupts passwords, emails, and form data silently.
+
+Two safe alternatives:
+1. **Tap next element by testID** — tapping any element above the keyboard dismisses it automatically
+2. **`pressKey: enter`** — simulates the Return/Done key on iOS keyboard, cleanly dismissing it without side effects. Use this when the next element is BEHIND the keyboard.
+
 ```yaml
-# Dismiss keyboard
-- hideKeyboard
-# or
-- pressKey: Escape
+# ❌ WRONG — hideKeyboard inserts stray characters on iOS
+- tapOn:
+    id: "email-input"
+- inputText: "test@example.com"
+- hideKeyboard                    # May type 't' into email field!
+
+# ✅ CORRECT — tap next field directly (keyboard auto-dismisses)
+- tapOn:
+    id: "email-input"
+- inputText: "test@example.com"
+- tapOn:
+    id: "password-input"          # Keyboard dismisses on its own
+- inputText: "password123"
+
+# ✅ CORRECT — when submit button is BEHIND keyboard, use pressKey enter first
+- pressKey: enter                 # Dismisses keyboard cleanly
+- tapOn:
+    id: "submit-button"           # Now visible and tappable
 
 # Clear pre-filled text before typing
 - eraseText: 20
 - inputText: "new value"
-
-# Dismiss keyboard between form fields (prevents keyboard covering next input)
-- tapOn:
-    id: "email-input"
-- inputText: "test@example.com"
-- hideKeyboard
-- tapOn:
-    id: "password-input"
-- inputText: "password123"
 ```
 
 ### Screenshots
