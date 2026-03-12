@@ -95,7 +95,7 @@ These patterns apply regardless of the specific app. Adapt the prefix to match t
 
 ## Compound Component Patterns
 
-Some components generate child testIDs from a parent testID. Know these patterns to avoid tapping container elements that don't trigger actions.
+Some components generate child testIDs from a parent testID. These patterns matter for Maestro because tapping the container often doesn't work — see `maestro-gotchas.md` for the interaction details.
 
 ### SegmentedControl / Toggle
 
@@ -103,7 +103,7 @@ Container testID generates per-segment IDs: `${containerTestID}-${option.key}`
 
 | Element | testID | Example |
 |---|---|---|
-| Container (DON'T tap) | `view-toggle` | Tapping hits the divider |
+| Container | `view-toggle` | |
 | Segment option | `view-toggle-${key}` | `view-toggle-calendar`, `view-toggle-list` |
 
 ### StepHeader (Multi-Step Forms)
@@ -112,8 +112,8 @@ Header testID generates a back button: `${testID}-back`
 
 | Element | testID | Example |
 |---|---|---|
-| Header container (DON'T tap) | `results-step-header` | No action on tap |
-| Back button | `results-step-header-back` | Navigates to previous step |
+| Header container | `results-step-header` | |
+| Back button | `results-step-header-back` | |
 
 ### Property Selector
 

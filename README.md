@@ -46,12 +46,13 @@ Or just describe what you need — the skill triggers automatically on phrases l
 
 ```
 mobile-e2e/
-├── SKILL.md                           # Main skill (3 workflows, 224 lines)
+├── SKILL.md                           # Main skill (3 workflows, 225 lines)
 ├── references/
-│   ├── maestro-patterns.md            # YAML templates & conventions (467 lines)
-│   ├── testid-conventions.md          # testID naming rules (138 lines)
+│   ├── maestro-templates.md           # YAML structural templates & interaction patterns (462 lines)
+│   ├── maestro-gotchas.md             # Platform limitations & pitfalls (283 lines)
+│   ├── testid-conventions.md          # testID naming rules (211 lines)
 │   ├── flow-doc-template.md           # Markdown test plan template (187 lines)
-│   └── troubleshooting.md            # 18 solved problems (298 lines)
+│   └── troubleshooting.md            # Environment/config/timing issues (252 lines)
 └── scripts/
     └── e2e-run.template.sh            # Test runner script template (139 lines)
 ```
@@ -60,7 +61,7 @@ mobile-e2e/
 
 The skill encodes patterns and solutions from real production E2E test suites:
 
-- **18 solved problems** — iOS Keychain persistence, Expo Dev Client handling, session loss between flows, BottomSheet/Portal workarounds, OTP hidden inputs, native alert dialogs, multi-language apps, keyboard issues, and more
+- **25+ solved problems** split across gotchas (platform limitations) and troubleshooting (environment/config issues) — no duplication between files
 - **Complete Maestro templates** — config, utility flows (launch/resume/login/OTP), individual test flows, master run-all, e2e-run.sh runner
 - **testID conventions** — kebab-case naming rules by feature type (auth, navigation, lists, modals, settings, etc.)
 - **Session reuse architecture** — Setup (clearState + login) → Tests (resume session) → Teardown (logout)

@@ -37,10 +37,11 @@ Each reference file serves a specific purpose — only read what you need:
 
 | Reference | Read When |
 |-----------|-----------|
-| `references/maestro-patterns.md` | Generating YAML files (Workflow 2). Contains all templates: config, utilities, flows, master flow, common patterns |
-| `references/testid-conventions.md` | Analyzing testIDs or recommending new ones (Workflow 1). Contains naming rules and examples |
-| `references/flow-doc-template.md` | Writing markdown test plan docs (Workflow 1). Contains the output template |
-| `references/troubleshooting.md` | Debugging test failures (Workflow 3), or when generating YAML and you need to handle a known edge case. Contains 25 solved problems |
+| `references/maestro-templates.md` | Generating YAML files (Workflow 2). Config, utility flows, individual/master flow templates, common interaction patterns, runner script, timeouts |
+| `references/maestro-gotchas.md` | Generating YAML (Workflow 2) or debugging failures (Workflow 3). Platform limitations and pitfalls: BottomSheet/Portal dual-render, scroll, keyboard, SegmentedControl, StepHeader, pressKey Escape, assertNotVisible, clearInput |
+| `references/testid-conventions.md` | Analyzing testIDs or recommending new ones (Workflow 1). Naming rules, patterns by feature type, compound component patterns |
+| `references/flow-doc-template.md` | Writing markdown test plan docs (Workflow 1). Output template for test plans and individual flow docs |
+| `references/troubleshooting.md` | Debugging test failures (Workflow 3). Environment/config issues, session management, timing, permissions. For Maestro command gotchas see `maestro-gotchas.md` instead |
 
 ---
 
@@ -95,7 +96,7 @@ If the user specifies a feature (e.g., "analyze the login flow"), only analyze t
 
 **Goal:** Convert flow documentation into executable Maestro YAML files.
 
-Read `references/maestro-patterns.md` before generating any YAML — it contains all templates and conventions extracted from production test suites.
+Read `references/maestro-templates.md` for structural templates, then `references/maestro-gotchas.md` for platform limitations and pitfalls.
 
 ### Steps
 
@@ -123,7 +124,7 @@ Read `references/maestro-patterns.md` before generating any YAML — it contains
            └── NN-flow-name.yaml
    ```
 
-3. **Generate files** using the templates from `references/maestro-patterns.md`:
+3. **Generate files** using the templates from `references/maestro-templates.md`:
    - config.yaml, utility flows, test flows, run-all.yaml master flows
    - `scripts/e2e-run.sh` — runner script that loads `.env` credentials
 
@@ -131,22 +132,15 @@ Read `references/maestro-patterns.md` before generating any YAML — it contains
    - **iOS**: Use `clearKeychain: true`, handle Expo Dev Client launcher, swipe RIGHT for drawer
    - **Android**: Use `clearState: true` (keychain not an issue), handle back button with `pressKey: back`
 
-### Key Conventions (details in maestro-patterns.md)
+### Key Conventions
 
 - Use `extendedWaitUntil` for dynamic content, `assertVisible` only after screen is confirmed loaded
 - Use `optional: true` for permission-gated or state-dependent elements
 - Never hardcode credentials — use `${ENV_VAR}` syntax loaded from `.env`
 - Production flows are READ-ONLY (no sends, no edits, no deletes)
-- Flows run sequentially sharing one session. `run-all.yaml` ensures this
+- Flows run sequentially sharing one session — `run-all.yaml` ensures this
 - Handle multi-language alerts with `optional: true` for each language variant
-- **BottomSheet/Portal elements are INVISIBLE to Maestro** — neither testID nor text selectors work. Use the native Modal dual-render approach (see maestro-patterns.md) with `EXPO_PUBLIC_E2E_TEST` env var
-- Maestro's `scroll` command accepts NO properties — use plain `- scroll` only
-- `scrollUntilVisible` is unreliable — prefer plain `- scroll` followed by `assertVisible`
-- `pressKey: Escape` does NOT work on iOS — use close buttons or coordinate taps
-- `clearInput` is NOT a valid command — use `tapOn` + `eraseText` instead
-- `assertNotVisible` only works for elements that exist but are hidden — not for absent elements
-- Tap individual SegmentedControl segments (`${id}-${key}`), never the container
-- Tap StepHeader back buttons (`${id}-back`), never the header container
+- **Read `references/maestro-gotchas.md`** for all platform limitations (BottomSheet, scroll, keyboard, SegmentedControl, StepHeader, pressKey Escape, assertNotVisible, clearInput)
 
 ---
 
