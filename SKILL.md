@@ -1,18 +1,10 @@
 ---
 name: mobile-e2e
 description: >
-  Mobile E2E testing with Maestro for React Native / Expo apps. Three workflows:
-  (1) Analyze code and generate user flow markdown docs describing what to test,
-  (2) Generate Maestro YAML test files from those docs,
-  (3) Execute tests and generate diagnostic reports with failure root-cause analysis.
-  Use this skill whenever the user mentions E2E testing, Maestro, mobile test automation,
-  test plans, user flows, testIDs, test coverage for mobile, QA workflows, acceptance testing,
-  release checks, smoke tests, or regression testing for React Native apps. Also trigger when
-  the user asks to "add testIDs", "find missing testIDs", "improve test coverage", "write
-  maestro tests", "run e2e", "e2e report", "create test flows", "document user flows",
-  "generate yaml tests", or "release check". Even if the user doesn't say "Maestro" explicitly,
-  if they're working on a React Native / Expo app and mention E2E or integration testing,
-  this skill applies.
+  Mobile E2E testing with Maestro for React Native / Expo. Three workflows: analyze code
+  → generate user flow docs → generate/run Maestro YAML tests with diagnostic reports.
+  Triggers on: E2E testing, Maestro, testIDs, test coverage, release checks, smoke tests
+  for React Native apps.
 argument-hint: "<workflow> [target]"
 ---
 
